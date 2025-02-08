@@ -12,12 +12,11 @@ class CheckChunk:
         self.source_chunk = source_chunk
         self.text = text
 
-check_chunks = []
-intrachunk_similarities = []
-interchunk_similarities = []
 
 async def chunk_checker(chunks):
-    global check_chunks, intrachunk_similarities, interchunk_similarities
+    check_chunks = []
+    intrachunk_similarities = []
+    interchunk_similarities = []
 
     for i, chunk in enumerate(chunks):
         sentences = nltk.sent_tokenize(chunk)
