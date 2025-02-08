@@ -24,63 +24,24 @@ def compute_embeddings(sentences):
     """Computes embeddings for each sentence."""
     return model.encode(sentences, convert_to_numpy=True)
 
-def cluster_sentences(sentences, embeddings, threshold=0.7):
-    """
-    Groups sentences into meaningful paragraphs based on semantic similarity.
-    """
-    paragraphs = []
-    current_paragraph = [sentences[0]]
-
-    for i in range(1, len(sentences)):
-        similarity = util.pytorch_cos_sim(embeddings[i - 1], embeddings[i]).item()
-        #similarity = np.dot(embeddings[i - 1], embeddings[i])
-
-        if similarity > threshold:
-            current_paragraph.append(sentences[i])
-        else:
-            paragraphs.append(" ".join(current_paragraph))
-            current_paragraph = [sentences[i]]
-
-    if current_paragraph:
-        paragraphs.append(" ".join(current_paragraph))
-
-    return paragraphs
-
-def chunk_text(text, max_chunk_size=2000, offset=0.3):
+def chunk_text(text, max_chunk_size=2000, threshold=0.3):
     """Splits text into meaningful chunks while ensuring chunk quantity matches formula."""
     sentences = split_sentences(text)
     embeddings = compute_embeddings(sentences)
-    paragraphs = cluster_sentences(sentences, embeddings)
-
-    total_chars = sum(len(p) for p in paragraphs)
-
-    # Apply chunk count formula: ceil(total_characters / max_chunk_size) * 2
-    estimated_chunks = math.ceil(total_chars / max_chunk_size) * 2
-
-    # Adjust chunk sizes with offset
-    adjusted_max_size = int(max_chunk_size * (1 + offset))
 
     chunks = []
-    current_chunk = []
-    current_length = 0
-
-    for paragraph in paragraphs:
-        paragraph_length = len(paragraph)
-
-        if current_length + paragraph_length > adjusted_max_size:
-            chunks.append(" ".join(current_chunk))
-            current_chunk = []
-            current_length = 0
-
-        current_chunk.append(paragraph)
-        current_length += paragraph_length
-
-    if current_chunk:
-        chunks.append(" ".join(current_chunk))
-
-    # Ensure the number of chunks matches the formula
-    while len(chunks) < estimated_chunks:
-        chunks.append(chunks[-1])  # Duplicate last chunk if needed
+    ca = [0]
+    cci = 0
+    for i in range(1, sentences.__len__()):
+        ae = 0
+        for j in range(cci, i):
+            ae += np.dot( embeddings[j], embeddings[i] )
+        ae /= i-cci
+        if ae < threshold:
+            ca.append(i)
+            chunks.append( " ".join(sentences[cci:i]) )
+            cci = i
+            i += 1
 
     return [(i + 1, chunk) for i, chunk in enumerate(chunks)]
 
@@ -100,7 +61,7 @@ if __name__ == "__main__":
         # Load text
         text_data = load_text(input_file)
 
-        for max_chunk_size in [2000,3000,4000]:
+        for max_chunk_size in [2000]:
             # Generate optimized chunks
             chunked_data = chunk_text(text_data, max_chunk_size)
             # Save to CSV
