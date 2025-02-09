@@ -24,24 +24,39 @@ def compute_embeddings(sentences):
     """Computes embeddings for each sentence."""
     return model.encode(sentences, convert_to_numpy=True)
 
-def chunk_text(text, max_chunk_size=2000, threshold=0.3):
+def chunk_text(text : str, max_chunk_size=2000, threshold=0.4):
     """Splits text into meaningful chunks while ensuring chunk quantity matches formula."""
     sentences = split_sentences(text)
     embeddings = compute_embeddings(sentences)
 
+    total_chunk_num = np.ceil( text.__len__() / max_chunk_size ) * 2
+
     chunks = []
-    ca = [0]
+    dota = [0]
     cci = 0
-    for i in range(1, sentences.__len__()):
+    i = 1
+    while i < sentences.__len__():
         ae = 0
         for j in range(cci, i):
             ae += np.dot( embeddings[j], embeddings[i] )
         ae /= i-cci
+        if dota.__len__() <= i:
+            dota.append(ae)
+        else:
+            dota[i] = ae
+        if " ".join(sentences[cci:i]).__len__() > max_chunk_size:
+            k, _ = min( enumerate(dota[cci+1:i]), key=lambda x: x[1] )
+            i = cci + k + 1
+            ae = 0
         if ae < threshold:
-            ca.append(i)
             chunks.append( " ".join(sentences[cci:i]) )
             cci = i
             i += 1
+            if dota.__len__() <= i:
+                dota.append(ae)
+            else:
+                dota[i] = ae
+        i += 1
 
     return [(i + 1, chunk) for i, chunk in enumerate(chunks)]
 
