@@ -12,7 +12,6 @@ class CheckChunk:
         self.source_chunk = source_chunk
         self.text = text
 
-
 async def chunk_checker(chunks):
     check_chunks = []
     intrachunk_similarities = []

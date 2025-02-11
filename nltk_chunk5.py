@@ -19,54 +19,60 @@ def compute_embeddings(sentences):
     """Computes embeddings for each sentence."""
     return model.encode(sentences, convert_to_numpy=True)
 
-class Chunk_No_Array:
-    def __init__(self, ind: int, no: int, dotval: str):
-        self.ind = ind
-        self.no = no
-        self.dotval = dotval
-
-def chunk_text(text : str, max_chunk_size=2000, threshold=0.4):
-    """Splits text into meaningful chunks while ensuring chunk quantity matches formula."""
+def chunk_text(text: str, max_chunk_size=2000):
+    """Fast and optimized chunking algorithm."""
     sentences = split_sentences(text)
+    N = len(sentences)
+    if N == 0:
+        return []
+
     embeddings = compute_embeddings(sentences)
+    total_chunk_num = int(np.ceil(len(text) / max_chunk_size) * 2)
 
-    total_chunk_num = np.ceil( text.__len__() / max_chunk_size ) * 2
+    index_array = np.zeros(total_chunk_num, dtype=int)
 
-    chunks_no_a = []
-    dota = [0]
+    cur_ind = total_chunk_num
+    index = N - 1
+    while index > 0:
+        chunk = sentences[index]
+        while True:
+            index = index - 1
+            chunk = sentences[index] + " " + chunk
+            if index == 0 or chunk.__len__() > max_chunk_size:
+                cur_ind = cur_ind - 1
+                index_array[cur_ind] = index + 1
+                break
+
     cci = 0
-    i = 1
-    while i < sentences.__len__():
-        ae = 0
-        for j in range(cci, i):
-            ae += np.dot( embeddings[j], embeddings[i] )
-        ae /= i-cci
-        if dota.__len__() <= i:
-            dota.append(ae)
+    start_index = index_array[cci]
+    dota = []
+    chunk = sentences[start_index]
+    i = start_index + 1
+    while i < N:
+        chunk = chunk + " " + sentences[i]
+        if chunk.__len__() > max_chunk_size:
+            k, _ = min( enumerate(dota), key=lambda x: x[1] )
+            cci = cci + 1
+            start_index = start_index + 1 + k
+            if cci >= total_chunk_num or start_index < index_array[cci]:
+                break
+            index_array[cci] = start_index
+            dota = []
+            chunk = sentences[start_index]
+            i = start_index + 1
         else:
-            dota[i] = ae
-        if " ".join(sentences[cci:i]).__len__() > max_chunk_size:
-            k, _ = min( enumerate(dota[cci+1:i]), key=lambda x: x[1] )
-            i = cci + k + 1
             ae = 0
-        if ae < threshold:
-            chunks_no_a.append(Chunk_No_Array(chunks_no_a.__len__(), i, dota[i]))
-            cci = i
-            i += 1
-            if dota.__len__() <= i:
-                dota.append(ae)
-            else:
-                dota[i] = ae
+            for j in range(start_index+1, i+1):
+                ae += np.dot( embeddings[j], embeddings[start_index] )
+            dota.append( ae / (i - start_index) )
         i += 1
-    
-    chunks = []
-    iPrevNo = 0
-    for chunk_no in chunks_no_a:
-        chunks.append( " ".join(sentences[iPrevNo:chunk_no.ind]) )
-        iPrevNo = chunk_no.ind
-    chunks.append( " ".join(sentences[iPrevNo:]) )
 
-    return [(i + 1, chunk) for i, chunk in enumerate(chunks)]
+    chunks = []
+    for i in range(0, len(index_array)-1):
+        chunks.append( ( i+1, " ".join(sentences[ index_array[i] : index_array[i+1] ]) ) )
+    i = len(index_array)-1
+    chunks.append( (i+1, " ".join(sentences[ index_array[i] : N ]) ))
+    return chunks
 
 def load_text(file_path):
     """Loads text from a file."""
@@ -95,5 +101,5 @@ if __name__ == "__main__":
             chunked_data = chunk_text(text, max_chunk_size)
             # Save to CSV
             output_file = f"{output_file_prefix}__{max_chunk_size}.csv"
-            save_chunks_to_csv([(i + 1, chunk) for i, chunk in enumerate(chunked_data)], output_file)
+            save_chunks_to_csv(chunked_data, output_file)
             print(f"✅ Chunking completed! Chunks saved to {output_file}.")
