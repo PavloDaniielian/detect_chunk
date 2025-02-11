@@ -11,22 +11,13 @@ from sentence_transformers import SentenceTransformer, util
 # Load a sentence embedding model
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-def split_sentences(text):
-    """Uses NLTK to split text into sentences."""
-    return nltk.tokenize.sent_tokenize(text)
-
-def compute_embeddings(sentences):
-    """Computes embeddings for each sentence."""
-    return model.encode(sentences, convert_to_numpy=True)
-
 def chunk_text(text: str, max_chunk_size=2000):
     """Fast and optimized chunking algorithm."""
-    sentences = split_sentences(text)
+    sentences = nltk.tokenize.sent_tokenize(text)
     N = len(sentences)
     if N == 0:
         return []
-
-    embeddings = compute_embeddings(sentences)
+    
     total_chunk_quantity = int(np.ceil(len(text) / max_chunk_size) * 2)
 
     index_array = np.zeros(total_chunk_quantity, dtype=int)
@@ -43,31 +34,67 @@ def chunk_text(text: str, max_chunk_size=2000):
                 index_array[cur_ind] = index + 1
                 break
 
-    def calSimilarity(start_index, cur_index):
-        ae = 0
-        for j in range(start_index, cur_index):
-            ae += np.dot( embeddings[j], embeddings[cur_index] )
-        return ae / (cur_index - start_index)
+    embeddings = model.encode(sentences, convert_to_numpy=True)
+    embeddings3 = model.encode([sentences[i:i+3] for i in range(len(sentences)-2)], convert_to_numpy=True)
+
+    def getSimilarity(cci, cur_index):
+        # start_index = index_array[cci]
+        # ae = 0
+        # for j in range(start_index, cur_index):
+        #     ae += np.dot( embeddings[j], embeddings[cur_index] )
+        # return ae / (cur_index - start_index)
+        start_index = index_array[cci]
+        embedding_me = []
+        while cci > 0:
+            cci -= 1
+            if index_array[cci+1] - index_array[cci] > 6:
+                embedding_me.append( (-1, embeddings3[ index_array[cci] ]) )
+                embedding_me.append( (-1, embeddings3[ index_array[cci]+3 ]) )
+                break
+        if len(embedding_me) <= 0:
+                embedding_me.append( (-1, embeddings3[ N-3 ]) )
+                embedding_me.append( (-1, embeddings3[ N-6 ]) )
+        if cur_index < N-6:
+            embedding_me.append( (1, embeddings3[cur_index+1]) )
+            embedding_me.append( (1, embeddings3[cur_index+4]) )
+        else:
+            embedding_me.append( (1, embeddings3[0]) )
+            embedding_me.append( (1, embeddings3[3]) )
+        for i in range(start_index, cur_index+1, 3):
+            embedding_me.append( (0, embeddings3[i]) )
+        intra = []
+        inter = []
+        for i in range(len(embedding_me) - 1):
+            for j in range(i+1, len(embedding_me)):
+                similarity = np.dot(embedding_me[i][1], embedding_me[j][1])
+                if embedding_me[i][0] == embedding_me[j][0]:
+                    intra.append(similarity)
+                else:
+                    inter.append(similarity)
+        return np.mean(intra) - np.mean(inter)
 
     cci = 0
     start_index = index_array[cci]
-    dota = []
+    similarity_min = 99999999
+    start_index_next = -1
     chunk = sentences[start_index]
     i = start_index + 1
     while True:
         chunk = chunk + " " + sentences[i]
         if chunk.__len__() > max_chunk_size:
-            k, _ = min( enumerate(dota), key=lambda x: x[1] )
             cci = cci + 1
-            start_index = start_index + 1 + k
+            start_index = start_index_next
             if cci >= total_chunk_quantity or start_index < index_array[cci]:
                 break
             index_array[cci] = start_index
-            dota = []
+            similarity_min = 99999999
             chunk = sentences[start_index]
             i = start_index
         else:
-            dota.append( calSimilarity(start_index, i) )
+            similarity = getSimilarity(cci, i)
+            if similarity <= similarity_min:
+                similarity_min = similarity
+                start_index_next = i
         i += 1
         if i >= N:
             ccn = cci + 1
@@ -75,7 +102,7 @@ def chunk_text(text: str, max_chunk_size=2000):
             for i in range(ccn):
                 start_index = index_array[i]
                 for j in range( 1, (index_array[i+1] if i<total_chunk_quantity-1 else N) - start_index ):
-                    dota.append( ( i, j, calSimilarity(index_array[i], start_index+j) ) )
+                    dota.append( ( i, j, getSimilarity(i, start_index+j) ) )
             dota = sorted( dota, key=lambda x: x[2] ) [ : total_chunk_quantity - ccn ]
             dota = sorted( dota, key=lambda x: (x[0], x[1]), reverse=True )
             for element in dota:
