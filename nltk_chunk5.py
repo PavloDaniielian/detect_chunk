@@ -27,11 +27,11 @@ def chunk_text(text: str, max_chunk_size=2000):
         return []
 
     embeddings = compute_embeddings(sentences)
-    total_chunk_num = int(np.ceil(len(text) / max_chunk_size) * 2)
+    total_chunk_quantity = int(np.ceil(len(text) / max_chunk_size) * 2)
 
-    index_array = np.zeros(total_chunk_num, dtype=int)
-
-    cur_ind = total_chunk_num
+    index_array = np.zeros(total_chunk_quantity, dtype=int)
+    
+    cur_ind = total_chunk_quantity
     index = N - 1
     while index > 0:
         chunk = sentences[index]
@@ -43,32 +43,51 @@ def chunk_text(text: str, max_chunk_size=2000):
                 index_array[cur_ind] = index + 1
                 break
 
+    def calcNeighbor(start_index, cur_index):
+        ae = 0
+        for j in range(start_index+1, cur_index+1):
+            ae += np.dot( embeddings[j], embeddings[start_index] )
+        return ( ae / (cur_index - start_index) )
+
     cci = 0
     start_index = index_array[cci]
     dota = []
     chunk = sentences[start_index]
     i = start_index + 1
-    while i < N:
+    while True:
         chunk = chunk + " " + sentences[i]
         if chunk.__len__() > max_chunk_size:
             k, _ = min( enumerate(dota), key=lambda x: x[1] )
             cci = cci + 1
             start_index = start_index + 1 + k
-            if cci >= total_chunk_num or start_index < index_array[cci]:
+            if cci >= total_chunk_quantity or start_index < index_array[cci]:
                 break
             index_array[cci] = start_index
             dota = []
             chunk = sentences[start_index]
-            i = start_index + 1
+            i = start_index
         else:
-            ae = 0
-            for j in range(start_index+1, i+1):
-                ae += np.dot( embeddings[j], embeddings[start_index] )
-            dota.append( ae / (i - start_index) )
+            dota.append( calcNeighbor(start_index, i) )
         i += 1
+        if i >= N:
+            ccn = cci + 1
+            dota = []
+            for i in range(ccn):
+                start_index = index_array[i]
+                for j in range( 1, (index_array[i+1] if i<total_chunk_quantity-1 else N) - start_index ):
+                    dota.append( ( i, j, calcNeighbor(index_array[i], start_index+j) ) )
+            dota = sorted( dota, key=lambda x: x[2] ) [ : total_chunk_quantity - ccn ]
+            dota = sorted( dota, key=lambda x: (x[0], x[1]), reverse=True )
+            for element in dota:
+                cci = element[0]
+                for j in range(ccn, cci+1, -1):
+                    index_array[j] = index_array[j-1]
+                index_array[cci+1] = index_array[cci] + element[1]
+                ccn = ccn + 1
+            break
 
     chunks = []
-    for i in range(0, len(index_array)-1):
+    for i in range(len(index_array)-1):
         chunks.append( ( i+1, " ".join(sentences[ index_array[i] : index_array[i+1] ]) ) )
     i = len(index_array)-1
     chunks.append( (i+1, " ".join(sentences[ index_array[i] : N ]) ))
