@@ -85,7 +85,7 @@ def chunk_text(text: str, max_chunk_size: int):
     # --- Step 6: Deterministic Local Search to Refine Boundaries.
     current_reward = candidate_reward(boundaries)
     improved = True
-    window = 5  # search ±5 sentences around each boundary
+    window = 10  # search ±5 sentences around each boundary
     while improved:
         improved = False
         # Iterate over each movable boundary (skip the first and last).
@@ -114,7 +114,7 @@ def chunk_text(text: str, max_chunk_size: int):
     chunks = []
     for i in range(len(boundaries) - 1):
         seg = " ".join(sentences[j] for j in range(boundaries[i], boundaries[i+1]))
-        chunks.append(seg)
+        chunks.append( (i+1, seg) )
     return chunks
 
 def load_text(file_path):
@@ -138,13 +138,15 @@ if __name__ == "__main__":
     for input_file in glob.glob("*.txt"):
         output_file_prefix = input_file.replace(".txt", "")
         # Load text
+        print(f"⌚ Loading {input_file} ...")
         text = load_text(input_file)
+        print(f"✅ Loaded {input_file}.")
 
         for max_chunk_size in [2000,3000,4000]:
-            print(f"Chunking {input_file} max_chunk_size={max_chunk_size} ...")
+            print(f"⌛ Chunking {input_file} max_chunk_size={max_chunk_size} ...")
             # Generate optimized chunks
             chunked_data = chunk_text(text, max_chunk_size)
             # Save to CSV
             output_file = f"{output_file_prefix}__{max_chunk_size}.csv"
-            save_chunks_to_csv([(i + 1, chunk) for i, chunk in enumerate(chunked_data)], output_file)
-            print(f"✅ Chunking completed! Chunks saved to {output_file}.")
+            save_chunks_to_csv(chunked_data, output_file)
+            print(f"🎯 Chunking completed! Chunks saved to {output_file}.")

@@ -22,6 +22,7 @@ def chunk_text(text: str, max_chunk_size=2000):
 
     index_array = np.zeros(total_chunk_quantity+1, dtype=int)
     
+    # shift to down by keeping chunk size
     cur_ind = total_chunk_quantity
     index_array[cur_ind] = N
     index = N - 1
@@ -42,11 +43,13 @@ def chunk_text(text: str, max_chunk_size=2000):
         start_index = index_array[cci]
         total_similarity = 0
 
+        # check in own chunk
         ae = 0
         for j in range(start_index, cur_index):
             ae += np.dot( embeddings[j], embeddings[cur_index] )
-        total_similarity += ae / (cur_index - start_index)
+        total_similarity += 1 * ( ae / (cur_index - start_index) )
 
+        # check neighborhood chunk
         # embedding_me = []
         # while cci > 0:
         #     cci -= 1
@@ -75,9 +78,10 @@ def chunk_text(text: str, max_chunk_size=2000):
         #             intra.append(similarity)
         #         else:
         #             inter.append(similarity)
-        # total_similarity += np.mean(intra) - np.mean(inter)
+        # total_similarity += 0.3 * ( np.mean(intra) - np.mean(inter) )
         return total_similarity
 
+    # split entire
     cci = 0
     start_index = index_array[cci]
     similarity_min = 99999999
@@ -117,6 +121,70 @@ def chunk_text(text: str, max_chunk_size=2000):
                 index_array[cci+1] = index_array[cci] + element[1]
                 ccn = ccn + 1
             break
+
+    #Deterministic local search to refine index_array.
+    lengths = [len(s) for s in sentences]
+    def chunk_size(indices):
+        return sum(lengths[i] for i in indices) + (len(indices) - 1)
+    sentence_embeddings = embeddings.copy()
+    norms = np.linalg.norm(sentence_embeddings, axis=1, keepdims=True)
+    sentence_embeddings = sentence_embeddings / np.maximum(norms, 1e-10)
+    def candidate_reward(index_array):
+        segments = []
+        for i in range(len(index_array) - 1):
+            seg = list(range(index_array[i], index_array[i+1]))
+            if chunk_size(seg) > max_chunk_size:
+                return -1000  # penalty for violating size constraint
+            segments.append(seg)
+        check_chunks = []
+        # Split each segment into groups of up to 3 sentences.
+        for seg_index, seg in enumerate(segments):
+            for j in range(0, len(seg), 3):
+                group = seg[j:j+3]
+                if len(group) == 0:
+                    continue
+                avg_emb = np.mean(sentence_embeddings[group], axis=0)
+                check_chunks.append((seg_index, avg_emb))
+        if not check_chunks:
+            return -1000
+        intra = []
+        inter = []
+        for i in range(len(check_chunks) - 1):
+            for j in range(i+1, len(check_chunks)):
+                sim_val = np.dot(check_chunks[i][1], check_chunks[j][1])
+                if check_chunks[i][0] == check_chunks[j][0]:
+                    intra.append(sim_val)
+                else:
+                    inter.append(sim_val)
+        avg_intra = np.mean(intra) if intra else 0
+        avg_inter = np.mean(inter) if inter else 0
+        return avg_intra - avg_inter
+    
+    current_reward = candidate_reward(index_array)
+    improved = True
+    window = 10  # search ±5 sentences around each boundary
+    while improved:
+        improved = False
+        # Iterate over each movable boundary (skip the first and last).
+        for i in range(1, len(index_array) - 1):
+            best_boundary = index_array[i]
+            best_r = candidate_reward(index_array)
+            lower_limit = index_array[i-1] + 1
+            upper_limit = index_array[i+1] - 1
+            # Restrict the search to a window around the current boundary.
+            start_candidate = max(best_boundary - window, lower_limit)
+            end_candidate = min(best_boundary + window, upper_limit)
+            for candidate in range(start_candidate, end_candidate + 1):
+                new_index_array = index_array.copy()
+                new_index_array[i] = candidate
+                r = candidate_reward(new_index_array)
+                if r > best_r:
+                    best_r = r
+                    best_boundary = candidate
+            if best_boundary != index_array[i]:
+                index_array[i] = best_boundary
+                current_reward = best_r
+                improved = True
 
     chunks = []
     for i in range(len(index_array)-1):
