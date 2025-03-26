@@ -11,6 +11,7 @@ from itertools import combinations
 
 # Ensure sentence tokenizer is available
 #nltk.download('punkt')
+#nltk.download('punkt_tab')
 
 def chunk_text(text: str, max_chunk_size: int):
     # Ensure the NLTK punkt tokenizer is available.
